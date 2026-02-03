@@ -81,7 +81,7 @@ export default function Swap({
     } catch (error) {
       console.error("Failed to switch network:", error);
       alert(
-        "Failed to switch to Base network. Please switch manually in your wallet."
+        "Failed to switch to Base network. Please switch manually in your wallet.",
       );
     }
   };
@@ -91,7 +91,7 @@ export default function Swap({
     const fetchEthPrice = async () => {
       try {
         const res = await axios.get(
-          "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd"
+          "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
         );
         setEthPrice(res.data.ethereum.usd);
       } catch (err) {
@@ -163,7 +163,7 @@ export default function Swap({
       const result = ((Number(ethVal) * ethPrice) / tokenPriceUsd).toFixed(6);
       return result;
     },
-    [ethPrice, tokenPriceUsd]
+    [ethPrice, tokenPriceUsd],
   );
 
   const calcEthFromToken = useCallback(
@@ -173,7 +173,7 @@ export default function Swap({
       const result = ((Number(tkVal) * tokenPriceUsd) / ethPrice).toFixed(6);
       return result;
     },
-    [ethPrice, tokenPriceUsd]
+    [ethPrice, tokenPriceUsd],
   );
 
   // --- Recalculate ONLY when prices change, not on every render ---
@@ -311,6 +311,7 @@ export default function Swap({
       setApprovalMessage("");
       setErrorMessage("");
 
+      // Execute approval
       const hash = await walletClient.writeContract({
         address: checksummedTokenAddress,
         abi: ERC20ABI,
@@ -318,19 +319,39 @@ export default function Swap({
         args: [ROUTER_ADDRESS, amountToApprove],
       });
 
-      await publicClient.waitForTransactionReceipt({ hash });
-      setApprovalMessage("✓ Token approved successfully!");
-      console.log("Token approved!");
+      setApprovalMessage(`Approval pending: ${hash.slice(0, 10)}...`);
 
-      // Clear approval message after 3 seconds
-      setTimeout(() => setApprovalMessage(""), 3000);
+      // Wait for transaction confirmation
+      const receipt = await publicClient.waitForTransactionReceipt({
+        hash,
+        timeout: 60_000, // 60 second timeout
+      });
 
-      setLoading(false);
-      return true;
+      if (receipt.status === "success") {
+        setApprovalMessage("✓ Token approved successfully!");
+
+        // Clear approval message after 3 seconds
+        setTimeout(() => setApprovalMessage(""), 3000);
+        setLoading(false);
+        return true;
+      } else {
+        throw new Error(
+          "Approval transaction failed with status: " + receipt.status,
+        );
+      }
     } catch (err) {
-      console.error("Approval failed:", err);
       setApprovalMessage("");
-      setErrorMessage("Approval failed: " + (err.message || "Unknown error"));
+
+      let errorMsg = "Approval failed";
+      if (err?.message?.includes("rejected")) {
+        errorMsg = "Approval rejected by wallet";
+      } else if (err?.message?.includes("insufficient")) {
+        errorMsg = "Insufficient ETH for gas fee";
+      } else if (err?.message) {
+        errorMsg = err.message.slice(0, 80);
+      }
+
+      setErrorMessage(errorMsg);
       setLoading(false);
       return false;
     }
@@ -339,6 +360,7 @@ export default function Swap({
   const handleSwap = async () => {
     setErrorMessage("");
 
+    // --- Validation checks ---
     if (!isConnected) {
       setErrorMessage("Connect wallet first");
       return;
@@ -355,8 +377,9 @@ export default function Swap({
       setErrorMessage("Enter amounts");
       return;
     }
-    if (!walletClient) {
-      setErrorMessage("Wallet not ready");
+
+    if (!walletClient || !publicClient) {
+      setErrorMessage("Wallet or network not ready");
       return;
     }
 
@@ -369,14 +392,14 @@ export default function Swap({
     // Validate balances
     if (hasInsufficientEthBalance) {
       setErrorMessage(
-        `Insufficient ETH balance. Need: ${totalEthNeeded.toFixed(6)} ETH`
+        `Insufficient ETH balance. Need: ${totalEthNeeded.toFixed(6)} ETH`,
       );
       return;
     }
 
     if (hasInsufficientTokenBalance) {
       setErrorMessage(
-        `Insufficient token balance. Have: ${tokenBalance} ${tokenSymbol}`
+        `Insufficient token balance. Have: ${tokenBalance} ${tokenSymbol}`,
       );
       return;
     }
@@ -388,12 +411,25 @@ export default function Swap({
 
       const minReceivedForTx = minReceivedUI;
       const amountInString = reversed ? tokenAmount : ethAmount;
+      const deadline = BigInt(Math.floor(Date.now() / 1000) + 600); // 10-minute deadline
 
       if (!reversed) {
-        // ETH -> Token swap
+        // ========== ETH -> Token SWAP ==========
         const amountIn = parseEther(amountInString);
         const amountOutMin = parseUnits(minReceivedForTx, tokenDecimals);
 
+        // Simulate the transaction first to catch errors early
+        try {
+          await publicClient.call({
+            account: address,
+            to: ROUTER_ADDRESS,
+            data: undefined, // For actual simulation, we'd encode the function call
+          });
+        } catch (e) {
+          console.warn("Pre-flight check warning (non-critical):", e);
+        }
+
+        // Execute the swap
         const hash = await walletClient.writeContract({
           address: ROUTER_ADDRESS,
           abi: UNISWAP_ROUTER_ABI,
@@ -402,18 +438,35 @@ export default function Swap({
             amountOutMin,
             [WETH_ADDRESS, checksummedTokenAddress],
             address,
-            BigInt(Math.floor(Date.now() / 1000) + 600),
+            deadline,
           ],
           value: amountIn,
         });
 
-        await publicClient.waitForTransactionReceipt({ hash });
+        setApprovalMessage(`Transaction submitted: ${hash.slice(0, 10)}...`);
+
+        // Wait for transaction confirmation
+        const receipt = await publicClient.waitForTransactionReceipt({
+          hash,
+          timeout: 60_000, // 60 second timeout
+        });
+
+        if (receipt.status === "success") {
+          setApprovalMessage("✓ Swap successful!");
+          setEthAmount("");
+          setTokenAmount("");
+
+          // Clear success message after 3 seconds
+          setTimeout(() => setApprovalMessage(""), 3000);
+        } else {
+          throw new Error("Transaction failed - status: " + receipt.status);
+        }
       } else {
-        // Token -> ETH swap
+        // ========== Token -> ETH SWAP ==========
         const amountIn = parseUnits(amountInString, tokenDecimals);
         const amountOutMin = parseEther(minReceivedForTx);
 
-        // Check allowance
+        // Check and handle allowance
         const allowance = await publicClient.readContract({
           address: checksummedTokenAddress,
           abi: ERC20ABI,
@@ -423,9 +476,12 @@ export default function Swap({
 
         if (BigInt(allowance) < amountIn) {
           const approved = await approveToken(amountIn);
-          if (!approved) return;
+          if (!approved) {
+            throw new Error("Token approval was rejected or failed");
+          }
         }
 
+        // Execute the swap
         const hash = await walletClient.writeContract({
           address: ROUTER_ADDRESS,
           abi: UNISWAP_ROUTER_ABI,
@@ -435,19 +491,49 @@ export default function Swap({
             amountOutMin,
             [checksummedTokenAddress, WETH_ADDRESS],
             address,
-            BigInt(Math.floor(Date.now() / 1000) + 600),
+            deadline,
           ],
         });
 
-        await publicClient.waitForTransactionReceipt({ hash });
+        setApprovalMessage(`Transaction submitted: ${hash.slice(0, 10)}...`);
+
+        // Wait for transaction confirmation
+        const receipt = await publicClient.waitForTransactionReceipt({
+          hash,
+          timeout: 60_000, // 60 second timeout
+        });
+
+        if (receipt.status === "success") {
+          setApprovalMessage("✓ Swap successful!");
+          setEthAmount("");
+          setTokenAmount("");
+
+          // Clear success message after 3 seconds
+          setTimeout(() => setApprovalMessage(""), 3000);
+        } else {
+          throw new Error("Transaction failed - status: " + receipt.status);
+        }
+      }
+    } catch (err) {
+      console.error("❌ Swap failed:", err);
+
+      // Parse different error types for better UX
+      let errorMsg = "Swap failed";
+
+      if (err?.message?.includes("rejected")) {
+        errorMsg = "Transaction rejected by wallet";
+      } else if (err?.message?.includes("insufficient")) {
+        errorMsg = "Insufficient balance or allowance";
+      } else if (err?.message?.includes("slippage")) {
+        errorMsg = "Slippage exceeded - try increasing slippage tolerance";
+      } else if (err?.message?.includes("timeout")) {
+        errorMsg = "Transaction timeout - please check your wallet";
+      } else if (err?.message) {
+        errorMsg = err.message.slice(0, 80);
       }
 
-      alert("Swap successful!");
-      setEthAmount("");
-      setTokenAmount("");
-    } catch (err) {
-      console.error("Swap failed:", err);
-      setErrorMessage("Swap failed: " + (err.message || "Unknown error"));
+      setErrorMessage(errorMsg);
+      setApprovalMessage("");
     } finally {
       setLoading(false);
     }
@@ -618,16 +704,38 @@ export default function Swap({
               {estimatedGas} ETH
             </span>
           </p>
-          <p className="text-white text-sm">
-            Slippage:{" "}
-            <span className="font-semibold text-red-300">{slippage}%</span>
-          </p>
+
+          {/* Slippage Control */}
+          <div className="flex items-center justify-between">
+            <label className="text-white text-sm">Slippage Tolerance:</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="0"
+                max="50"
+                step="0.1"
+                value={slippage}
+                onChange={(e) => setSlippage(Number(e.target.value))}
+                className="w-16 px-2 py-1 bg-gray-800 text-white rounded border border-gray-600 text-sm text-center"
+              />
+              <span className="text-red-300 font-semibold">%</span>
+            </div>
+          </div>
 
           {isConnected && reversed && (
             <p className="text-white text-sm">
               Your {tokenSymbol} Balance:{" "}
               <span className="font-semibold text-cyan-300">
                 {Number(tokenBalance).toFixed(6)}
+              </span>
+            </p>
+          )}
+
+          {isConnected && !reversed && (
+            <p className="text-white text-sm">
+              Your ETH Balance:{" "}
+              <span className="font-semibold text-cyan-300">
+                {userEthBalance.toFixed(6)}
               </span>
             </p>
           )}

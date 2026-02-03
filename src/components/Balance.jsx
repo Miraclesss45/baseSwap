@@ -12,12 +12,25 @@ export default function Balance() {
   });
 
   if (!isConnected) {
-    return <p className="text-white text-center font-semibold  text-sm">Connect wallet.</p>;
+    return (
+      <p className="text-white text-center font-semibold  text-sm">
+        Connect wallet.
+      </p>
+    );
   }
 
   if (isLoading) {
-    return <p className="text-white text-center font-semibold text-sm">Fetching Eth balance...</p>;
+    return (
+      <p className="text-white text-center font-semibold text-sm">
+        Fetching Eth balance...
+      </p>
+    );
   }
 
-  return <p className="text-white text-center font-semibold text-sm"> {data?.formatted} {data?.symbol}</p>;
+  return (
+    <p className="text-white text-center font-semibold text-sm">
+      {" "}
+      {Number(data?.formatted).toFixed(5)} {data?.symbol}
+    </p>
+  );
 }
