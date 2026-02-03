@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { LuArrowUpDown } from "react-icons/lu";
 import {
   useAccount,
@@ -22,6 +22,7 @@ import axios from "axios";
 // Use getAddress to ensure proper checksum format
 const ROUTER_ADDRESS = getAddress("0x4752ba5dbc23f44d87826276bf6d2a606c4e5001");
 const WETH_ADDRESS = getAddress("0x4200000000000000000000000000000000000006");
+const DEFAULT_GAS_ESTIMATE = "0.005"; // More realistic default
 
 export default function Swap({
   tokenAddress,
@@ -43,11 +44,19 @@ export default function Swap({
   const [ethAmount, setEthAmount] = useState("");
   const [tokenAmount, setTokenAmount] = useState("");
   const [reversed, setReversed] = useState(false);
-  const [activeInput, setActiveInput] = useState("eth");
   const [slippage, setSlippage] = useState(0.5);
   const [loading, setLoading] = useState(false);
   const [estimatedGas, setEstimatedGas] = useState("0");
-  const [ethPrice, setEthPrice] = useState(appEthPrice || 3000);
+  const [ethPrice, setEthPrice] = useState(appEthPrice || null);
+  const [tokenBalance, setTokenBalance] = useState("0");
+  const [hasInsufficientTokenBalance, setHasInsufficientTokenBalance] =
+    useState(false);
+  const [approvalMessage, setApprovalMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [lastEditedField, setLastEditedField] = useState(""); // Track which field user last edited
+
+  // Ref to track previous gas estimate to avoid unnecessary updates
+  const prevGasEstimate = useRef("0");
 
   const tokenSymbol = tokenData?.symbol ?? "TOKEN";
   const tokenName = tokenData?.name ?? "Token";
@@ -55,9 +64,12 @@ export default function Swap({
   const tokenPriceUsd = Number(tokenData?.priceUsd) || null;
 
   // Ensure token address is checksummed
-  const checksummedTokenAddress = tokenAddress
-    ? getAddress(tokenAddress)
-    : null;
+  let checksummedTokenAddress = null;
+  try {
+    checksummedTokenAddress = tokenAddress ? getAddress(tokenAddress) : null;
+  } catch (err) {
+    console.error("Invalid token address:", err);
+  }
 
   // Check if on correct network
   const isCorrectNetwork = chain?.id === base.id;
@@ -76,8 +88,6 @@ export default function Swap({
 
   // --- Fetch ETH price if not provided ---
   useEffect(() => {
-    if (appEthPrice) return setEthPrice(appEthPrice);
-
     const fetchEthPrice = async () => {
       try {
         const res = await axios.get(
@@ -86,10 +96,49 @@ export default function Swap({
         setEthPrice(res.data.ethereum.usd);
       } catch (err) {
         console.error("Failed to fetch ETH price:", err);
+        // Only set fallback if no price was provided
+        if (!appEthPrice) setEthPrice(3000);
       }
     };
-    fetchEthPrice();
-  }, [appEthPrice]);
+
+    // Fetch if we don't have a price yet
+    if (!appEthPrice && !ethPrice) {
+      fetchEthPrice();
+    } else if (appEthPrice) {
+      setEthPrice(appEthPrice);
+    }
+  }, []);
+
+  // --- Fetch token balance for Token->ETH swaps ---
+  useEffect(() => {
+    if (!isConnected || !checksummedTokenAddress || !publicClient) {
+      setTokenBalance("0");
+      return;
+    }
+
+    const fetchTokenBalance = async () => {
+      try {
+        const balance = await publicClient.readContract({
+          address: checksummedTokenAddress,
+          abi: ERC20ABI,
+          functionName: "balanceOf",
+          args: [address],
+        });
+        setTokenBalance(formatUnits(balance, tokenDecimals));
+      } catch (err) {
+        console.error("Failed to fetch token balance:", err);
+        setTokenBalance("0");
+      }
+    };
+
+    fetchTokenBalance();
+  }, [
+    isConnected,
+    checksummedTokenAddress,
+    publicClient,
+    address,
+    tokenDecimals,
+  ]);
 
   // --- Derived values ---
   const outputAmount = reversed ? ethAmount : tokenAmount;
@@ -103,23 +152,54 @@ export default function Swap({
   const totalEthNeeded = reversed
     ? Number(estimatedGas)
     : Number(ethAmount || 0) + Number(estimatedGas);
-  const hasInsufficientBalance = isConnected && totalEthNeeded > userEthBalance;
+  const hasInsufficientEthBalance =
+    isConnected && totalEthNeeded > userEthBalance;
 
-  const calcTokenFromEth = (ethVal) =>
-    !ethVal || !ethPrice || !tokenPriceUsd
-      ? ""
-      : ((Number(ethVal) * ethPrice) / tokenPriceUsd).toFixed(6);
+  // Helper functions for price calculations (DEX standard formula)
+  const calcTokenFromEth = useCallback(
+    (ethVal) => {
+      if (!ethVal || !ethPrice || !tokenPriceUsd) return "";
+      // Formula: (ETH Amount × ETH Price USD) / Token Price USD
+      const result = ((Number(ethVal) * ethPrice) / tokenPriceUsd).toFixed(6);
+      return result;
+    },
+    [ethPrice, tokenPriceUsd]
+  );
 
-  const calcEthFromToken = (tkVal) =>
-    !tkVal || !ethPrice || !tokenPriceUsd
-      ? ""
-      : ((Number(tkVal) * tokenPriceUsd) / ethPrice).toFixed(6);
+  const calcEthFromToken = useCallback(
+    (tkVal) => {
+      if (!tkVal || !ethPrice || !tokenPriceUsd) return "";
+      // Formula: (Token Amount × Token Price USD) / ETH Price USD
+      const result = ((Number(tkVal) * tokenPriceUsd) / ethPrice).toFixed(6);
+      return result;
+    },
+    [ethPrice, tokenPriceUsd]
+  );
 
-  // --- Sync input fields ---
+  // --- Recalculate ONLY when prices change, not on every render ---
   useEffect(() => {
-    if (activeInput === "eth") setTokenAmount(calcTokenFromEth(ethAmount));
-    else setEthAmount(calcEthFromToken(tokenAmount));
-  }, [ethAmount, tokenAmount, activeInput, ethPrice, tokenPriceUsd]);
+    if (!ethPrice || !tokenPriceUsd || !lastEditedField) return;
+
+    // Only recalculate if the user hasn't recently edited
+    if (lastEditedField === "eth" && ethAmount) {
+      const calculated = calcTokenFromEth(ethAmount);
+      setTokenAmount(calculated);
+    } else if (lastEditedField === "token" && tokenAmount) {
+      const calculated = calcEthFromToken(tokenAmount);
+      setEthAmount(calculated);
+    }
+  }, [ethPrice, tokenPriceUsd, calcTokenFromEth, calcEthFromToken]);
+
+  // --- Validate token balance before Token->ETH swap ---
+  useEffect(() => {
+    if (reversed && tokenAmount) {
+      const userTokenBalance = Number(tokenBalance);
+      const inputAmount = Number(tokenAmount);
+      setHasInsufficientTokenBalance(inputAmount > userTokenBalance);
+    } else {
+      setHasInsufficientTokenBalance(false);
+    }
+  }, [reversed, tokenAmount, tokenBalance]);
 
   // --- Gas estimation ---
   useEffect(() => {
@@ -167,7 +247,7 @@ export default function Swap({
             account: address,
           });
         } else {
-          // Token -> ETH - need to check token balance first
+          // Token -> ETH
           const amountIn = parseUnits(amountInString, tokenDecimals);
           const amountOutMin = parseEther(minReceivedUI);
 
@@ -186,17 +266,24 @@ export default function Swap({
               account: address,
             });
           } catch (e) {
-            // If estimation fails for token->ETH, use a default estimate
-            gasEstimate = BigInt(250000);
+            // If estimation fails, use a reasonable default
+            gasEstimate = BigInt(300000);
           }
         }
 
         const totalGas = gasEstimate * gasPrice;
-        setEstimatedGas(Number(formatEther(totalGas)).toFixed(6));
+        const estimatedGasFormatted = Number(formatEther(totalGas)).toFixed(6);
+
+        // Only update if significantly different (avoid unnecessary renders)
+        if (estimatedGasFormatted !== prevGasEstimate.current) {
+          setEstimatedGas(estimatedGasFormatted);
+          prevGasEstimate.current = estimatedGasFormatted;
+        }
       } catch (err) {
         console.error("Gas estimation failed:", err);
-        // Set a reasonable default gas estimate
-        setEstimatedGas("0.001");
+        // Set a realistic default gas estimate
+        setEstimatedGas(DEFAULT_GAS_ESTIMATE);
+        prevGasEstimate.current = DEFAULT_GAS_ESTIMATE;
       }
     };
 
@@ -221,6 +308,8 @@ export default function Swap({
   const approveToken = async (amountToApprove) => {
     try {
       setLoading(true);
+      setApprovalMessage("");
+      setErrorMessage("");
 
       const hash = await walletClient.writeContract({
         address: checksummedTokenAddress,
@@ -230,46 +319,72 @@ export default function Swap({
       });
 
       await publicClient.waitForTransactionReceipt({ hash });
+      setApprovalMessage("✓ Token approved successfully!");
       console.log("Token approved!");
+
+      // Clear approval message after 3 seconds
+      setTimeout(() => setApprovalMessage(""), 3000);
+
+      setLoading(false);
       return true;
     } catch (err) {
       console.error("Approval failed:", err);
-      alert("Approval failed: " + (err.message || "Unknown error"));
+      setApprovalMessage("");
+      setErrorMessage("Approval failed: " + (err.message || "Unknown error"));
       setLoading(false);
       return false;
     }
   };
 
   const handleSwap = async () => {
+    setErrorMessage("");
+
     if (!isConnected) {
-      alert("Connect wallet first");
+      setErrorMessage("Connect wallet first");
       return;
     }
 
     // Check network before swapping
     if (!isCorrectNetwork) {
-      alert("Please switch to Base network");
+      setErrorMessage("Please switch to Base network");
       await handleSwitchNetwork();
       return;
     }
 
     if (!ethAmount && !tokenAmount) {
-      alert("Enter amounts");
+      setErrorMessage("Enter amounts");
       return;
     }
     if (!walletClient) {
-      alert("Wallet not ready");
+      setErrorMessage("Wallet not ready");
       return;
     }
 
     const amountInValue = reversed ? Number(tokenAmount) : Number(ethAmount);
     if (amountInValue <= 0) {
-      alert("Amount must be greater than zero.");
+      setErrorMessage("Amount must be greater than zero.");
+      return;
+    }
+
+    // Validate balances
+    if (hasInsufficientEthBalance) {
+      setErrorMessage(
+        `Insufficient ETH balance. Need: ${totalEthNeeded.toFixed(6)} ETH`
+      );
+      return;
+    }
+
+    if (hasInsufficientTokenBalance) {
+      setErrorMessage(
+        `Insufficient token balance. Have: ${tokenBalance} ${tokenSymbol}`
+      );
       return;
     }
 
     try {
       setLoading(true);
+      setApprovalMessage("");
+      setErrorMessage("");
 
       const minReceivedForTx = minReceivedUI;
       const amountInString = reversed ? tokenAmount : ethAmount;
@@ -306,7 +421,7 @@ export default function Swap({
           args: [address, ROUTER_ADDRESS],
         });
 
-        if (allowance < amountIn) {
+        if (BigInt(allowance) < amountIn) {
           const approved = await approveToken(amountIn);
           if (!approved) return;
         }
@@ -332,18 +447,16 @@ export default function Swap({
       setTokenAmount("");
     } catch (err) {
       console.error("Swap failed:", err);
-      alert("Swap failed: " + (err.message || "Unknown error"));
+      setErrorMessage("Swap failed: " + (err.message || "Unknown error"));
     } finally {
       setLoading(false);
     }
   };
 
   const handleReverse = () => {
-    const tmpEth = ethAmount;
-    setEthAmount(tokenAmount);
-    setTokenAmount(tmpEth);
+    // Simply toggle reversed - amounts stay the same!
+    // The UI will just swap which input is input vs output
     setReversed(!reversed);
-    setActiveInput(activeInput === "eth" ? "token" : "eth");
   };
 
   // --- Validation ---
@@ -355,7 +468,9 @@ export default function Swap({
   if (!checksummedTokenAddress) {
     return (
       <div className="flex items-center justify-center h-64">
-        <p className="text-white text-lg">Loading Token Info...</p>
+        <p className="text-white text-lg">
+          Paste a token address and click "Fetch Token"
+        </p>
       </div>
     );
   }
@@ -395,20 +510,38 @@ export default function Swap({
 
       <div className="relative flex flex-col items-center space-y-6 w-full">
         <div className="relative w-full flex flex-col items-center">
-          {/* Top Input */}
+          {/* Top Input - Primary Input (ETH or Token based on reversed) */}
           <input
             type="number"
             step="any"
             value={reversed ? tokenAmount : ethAmount}
             onChange={(e) => {
-              setActiveInput(reversed ? "token" : "eth");
-              reversed
-                ? setTokenAmount(e.target.value)
-                : setEthAmount(e.target.value);
+              const value = e.target.value;
+              setLastEditedField(reversed ? "token" : "eth");
+
+              if (reversed) {
+                // Reversed mode: Top input is TOKEN
+                setTokenAmount(value);
+                if (value) {
+                  const calculated = calcEthFromToken(value);
+                  setEthAmount(calculated);
+                } else {
+                  setEthAmount("");
+                }
+              } else {
+                // Normal mode: Top input is ETH
+                setEthAmount(value);
+                if (value) {
+                  const calculated = calcTokenFromEth(value);
+                  setTokenAmount(calculated);
+                } else {
+                  setTokenAmount("");
+                }
+              }
             }}
             className="w-full p-3 outline-2 outline-gray-400 rounded-xl bg-black text-white text-center h-14 mb-10 shadow-inner"
             placeholder={
-              reversed ? `Enter ${tokenSymbol} amount` : "Enter ETH amount"
+              reversed ? `Enter ${tokenSymbol} to sell` : "Enter ETH to buy"
             }
           />
 
@@ -417,45 +550,106 @@ export default function Swap({
             onClick={handleReverse}
             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 
       w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center
-      cursor-pointer shadow-lg border-4 border-white z-10"
+      cursor-pointer shadow-lg border-4 border-white z-10 hover:bg-blue-700 transition"
           >
             <LuArrowUpDown className="text-white h-6 w-6" />
           </div>
 
-          {/* Bottom Input */}
+          {/* Bottom Input - Secondary Output (Calculated) */}
           <input
             type="number"
             step="any"
             value={reversed ? ethAmount : tokenAmount}
             onChange={(e) => {
-              setActiveInput(reversed ? "eth" : "token");
-              reversed
-                ? setEthAmount(e.target.value)
-                : setTokenAmount(e.target.value);
+              const value = e.target.value;
+              setLastEditedField(reversed ? "eth" : "token");
+
+              if (reversed) {
+                // Reversed mode: Bottom input is ETH
+                setEthAmount(value);
+                if (value) {
+                  const calculated = calcTokenFromEth(value);
+                  setTokenAmount(calculated);
+                } else {
+                  setTokenAmount("");
+                }
+              } else {
+                // Normal mode: Bottom input is TOKEN
+                setTokenAmount(value);
+                if (value) {
+                  const calculated = calcEthFromToken(value);
+                  setEthAmount(calculated);
+                } else {
+                  setEthAmount("");
+                }
+              }
             }}
             className="w-full p-3 outline-2 outline-gray-500 rounded-xl bg-black text-white text-center h-14 mt-10 shadow-inner"
             placeholder={
-              reversed ? "Enter ETH amount" : `Enter ${tokenSymbol} amount`
+              reversed
+                ? "You will receive ETH"
+                : `You will receive ${tokenSymbol}`
             }
           />
         </div>
 
-        <p className="text-white text-sm mb-1">
-          Min Received:{" "}
-          <span className="font-semibold">
-            {minReceivedUI} {outputSymbol}
-          </span>
-        </p>
-        <p className="text-white text-sm mb-1">
-          Estimated Gas Fee:{" "}
-          <span className="font-semibold">{estimatedGas} ETH</span>
-        </p>
-        <p className="text-white text-sm mb-1">
-          Slippage:{" "}
-          <span className="font-semibold text-red-300">{slippage}%</span>
-        </p>
+        <div className="w-full space-y-3 bg-gray-900/50 p-4 rounded-lg">
+          <p className="text-white text-sm">
+            ETH Price:{" "}
+            <span className="font-semibold text-green-400">
+              ${ethPrice.toFixed(2)}
+            </span>
+          </p>
+          <p className="text-white text-sm">
+            {tokenSymbol} Price:{" "}
+            <span className="font-semibold text-green-400">
+              ${tokenPriceUsd?.toFixed(6) || "N/A"}
+            </span>
+          </p>
+          <p className="text-white text-sm">
+            Min Received:{" "}
+            <span className="font-semibold text-blue-300">
+              {minReceivedUI} {outputSymbol}
+            </span>
+          </p>
+          <p className="text-white text-sm">
+            Gas Fee:{" "}
+            <span className="font-semibold text-orange-300">
+              {estimatedGas} ETH
+            </span>
+          </p>
+          <p className="text-white text-sm">
+            Slippage:{" "}
+            <span className="font-semibold text-red-300">{slippage}%</span>
+          </p>
 
-        {hasInsufficientBalance && (
+          {isConnected && reversed && (
+            <p className="text-white text-sm">
+              Your {tokenSymbol} Balance:{" "}
+              <span className="font-semibold text-cyan-300">
+                {Number(tokenBalance).toFixed(6)}
+              </span>
+            </p>
+          )}
+        </div>
+
+        {approvalMessage && (
+          <div className="w-full mb-3 p-3 bg-green-500/90 rounded-lg">
+            <p className="text-white text-sm font-semibold text-center">
+              {approvalMessage}
+            </p>
+          </div>
+        )}
+
+        {errorMessage && (
+          <div className="w-full mb-3 p-3 bg-red-500/90 rounded-lg">
+            <p className="text-white text-sm font-semibold text-center">
+              ⚠️ {errorMessage}
+            </p>
+          </div>
+        )}
+
+        {hasInsufficientEthBalance && (
           <div className="w-full mb-3 p-3 bg-red-500/90 rounded-lg">
             <p className="text-white text-sm font-semibold text-center">
               ⚠️ Insufficient ETH Balance
@@ -467,34 +661,78 @@ export default function Swap({
           </div>
         )}
 
+        {hasInsufficientTokenBalance && (
+          <div className="w-full mb-3 p-3 bg-red-500/90 rounded-lg">
+            <p className="text-white text-sm font-semibold text-center">
+              ⚠️ Insufficient {tokenSymbol} Balance
+            </p>
+            <p className="text-white text-xs text-center mt-1">
+              Need: {tokenAmount} | Have: {Number(tokenBalance).toFixed(6)}
+            </p>
+          </div>
+        )}
+
         <button
-          className={`w-full py-3 rounded-xl text-white font-bold transition duration-200 shadow-md ${
-            loading ||
-            !isConnected ||
-            !isCorrectNetwork ||
-            !outputAmount ||
-            Number(outputAmount) <= 0 ||
-            hasInsufficientBalance
-              ? "bg-blue-600 cursor-not-allowed"
-              : "bg-green-600 hover:bg-green-700 active:bg-green-800"
-          }`}
+          className={`w-full py-4 px-6 rounded-2xl text-white font-extrabold text-lg transition-all duration-300 shadow-xl border-2 
+            flex items-center justify-center gap-2 transform hover:scale-105 active:scale-95
+            ${
+              loading ||
+              !isConnected ||
+              !isCorrectNetwork ||
+              !outputAmount ||
+              Number(outputAmount) <= 0 ||
+              hasInsufficientEthBalance ||
+              hasInsufficientTokenBalance
+                ? "bg-gradient-to-r from-gray-600 to-gray-700 border-gray-500 cursor-not-allowed opacity-60"
+                : "bg-gradient-to-r from-green-500 to-emerald-600 border-green-400 hover:from-green-600 hover:to-emerald-700 hover:shadow-2xl hover:shadow-green-500/50 active:from-emerald-700 active:to-green-800"
+            }`}
           disabled={
             loading ||
             !isConnected ||
             !isCorrectNetwork ||
             !outputAmount ||
             Number(outputAmount) <= 0 ||
-            hasInsufficientBalance
+            hasInsufficientEthBalance ||
+            hasInsufficientTokenBalance
           }
           onClick={handleSwap}
         >
-          {loading
-            ? "Processing..."
-            : !isCorrectNetwork
-            ? "Wrong Network"
-            : hasInsufficientBalance
-            ? "Insufficient Balance"
-            : "Execute Swap"}
+          {loading ? (
+            <>
+              <div className="w-5 h-5 border-3 border-white border-t-transparent rounded-full animate-spin" />
+              <span>Processing Swap...</span>
+            </>
+          ) : !isCorrectNetwork ? (
+            <>
+              <span>⚠️</span>
+              <span>Switch to Base</span>
+            </>
+          ) : hasInsufficientEthBalance ? (
+            <>
+              <span>❌</span>
+              <span>Insufficient ETH</span>
+            </>
+          ) : hasInsufficientTokenBalance ? (
+            <>
+              <span>❌</span>
+              <span>Insufficient {tokenSymbol}</span>
+            </>
+          ) : !outputAmount || Number(outputAmount) <= 0 ? (
+            <>
+              <span>📝</span>
+              <span>Enter Amount</span>
+            </>
+          ) : !isConnected ? (
+            <>
+              <span>🔗</span>
+              <span>Connect Wallet</span>
+            </>
+          ) : (
+            <>
+              <span>✓</span>
+              <span>Execute Swap</span>
+            </>
+          )}
         </button>
       </div>
     </div>

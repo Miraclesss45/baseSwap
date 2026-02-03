@@ -1,6 +1,6 @@
 // src/App.jsx
 import "./App.css";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import WalletConnect from "./components/WalletConnect";
 import TokenInfo from "./components/TokenInfo";
@@ -8,10 +8,13 @@ import Swap from "./components/Swap";
 
 export default function App() {
   const [inputAddress, setInputAddress] = useState("");
+  const [fetchedTokenAddress, setFetchedTokenAddress] = useState(null);
   const [tokenData, setTokenData] = useState(null);
   const [message, setMessage] = useState("");
   const [ethPrice, setEthPrice] = useState(null);
   const [loading, setLoading] = useState(false);
+  const abortControllerRef = useRef(null);
+  const debounceTimerRef = useRef(null);
 
   // Fetch ETH price (CoinGecko)
   useEffect(() => {
@@ -30,35 +33,64 @@ export default function App() {
 
     fetchEthPrice();
 
-    // Refresh every 60s
-    const t = setInterval(fetchEthPrice, 60_000);
+    // Refresh every 10s
+    const t = setInterval(fetchEthPrice, 20_000);
     return () => clearInterval(t);
   }, []);
 
-  // Fetch token info from DexScreener
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Fetch token info from DexScreener (with proper error handling)
   const fetchToken = async () => {
-    setMessage("");
-    setTokenData(null);
-
-    const trimmedAddress = inputAddress?.trim();
-
-    if (!trimmedAddress) {
-      setMessage("Please paste a token address.");
-      return;
-    }
-
-    // Basic validation for Ethereum address format
-    if (!/^0x[a-fA-F0-9]{40}$/.test(trimmedAddress)) {
-      setMessage("Invalid address format. Must be a valid Ethereum address.");
-      return;
-    }
-
-    setLoading(true);
-
     try {
+      setMessage("");
+      setTokenData(null);
+      setFetchedTokenAddress(null);
+
+      const trimmedAddress = inputAddress?.trim();
+
+      if (!trimmedAddress) {
+        setMessage("Please paste a token address.");
+        return;
+      }
+
+      // Basic validation for Ethereum address format
+      if (!/^0x[a-fA-F0-9]{40}$/.test(trimmedAddress)) {
+        setMessage("Invalid address format. Must be a valid Ethereum address.");
+        return;
+      }
+
+      // Cancel previous request if it's still pending
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
+
+      setLoading(true);
+
       const response = await axios.get(
-        `https://api.dexscreener.com/latest/dex/tokens/${trimmedAddress}`
+        `https://api.dexscreener.com/latest/dex/tokens/${trimmedAddress}`,
+        {
+          signal: abortControllerRef.current.signal,
+          timeout: 10000,
+        }
       );
+
+      // Check if request was aborted
+      if (!response?.data) {
+        setLoading(false);
+        return;
+      }
 
       const pairs = response.data?.pairs;
 
@@ -79,13 +111,17 @@ export default function App() {
             )
           : pairs[0];
 
-      // Parse important fields
+      // Safely extract data
+      if (!pair?.baseToken) {
+        setMessage("Could not parse token data. Please try again.");
+        setLoading(false);
+        return;
+      }
+
       const priceUsd = parseFloat(pair.priceUsd) || 0;
       const liquidityUsd = parseFloat(pair.liquidity?.usd) || 0;
       const volume24h = parseFloat(pair.volume?.h24) || 0;
       const priceChange24h = parseFloat(pair.priceChange?.h24) || 0;
-
-      // Get token decimals (default to 18 if not available)
       const decimals = pair.baseToken?.decimals || 18;
 
       setTokenData({
@@ -101,41 +137,67 @@ export default function App() {
         dexId: pair.dexId,
       });
 
+      // Only set the fetched address after successful fetch
+      setFetchedTokenAddress(trimmedAddress);
       setMessage("");
+      setLoading(false);
     } catch (error) {
+      // Don't update state if request was aborted
+      if (error?.code === "ERR_CANCELED") {
+        console.log("Request cancelled");
+        setLoading(false);
+        return;
+      }
+
       console.error("Error fetching token:", error);
 
-      if (error.response?.status === 404) {
+      // Only set error message if we haven't already aborted
+      if (error?.response?.status === 404) {
         setMessage("Token not found on DexScreener.");
-      } else if (error.response?.status === 429) {
+      } else if (error?.response?.status === 429) {
         setMessage("Rate limit exceeded. Please wait a moment.");
-      } else {
+      } else if (error?.code !== "ECONNABORTED") {
         setMessage("Failed to fetch token data. Please try again.");
       }
 
       setTokenData(null);
-    } finally {
+      setFetchedTokenAddress(null);
       setLoading(false);
     }
+  };
+
+  // Debounced fetch to prevent rapid API calls
+  const handleFetchToken = () => {
+    // Clear previous debounce timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    // Set new debounce timer
+    debounceTimerRef.current = setTimeout(() => {
+      fetchToken();
+    }, 300);
   };
 
   // Allow Enter key to trigger fetch
   const handleKeyPress = (e) => {
     if (e.key === "Enter") {
-      fetchToken();
+      handleFetchToken();
     }
   };
 
   return (
     <div className="min-h-screen font-mono bg-black">
       <div className="flex bg-black border-b-4 border-gray-400 h-20 p-10 w-full justify-around items-center">
-        <h3 className="text-white font-bold md:text-4xl text-xl font-mono">baseSwap</h3>
+        <h3 className="text-white font-bold md:text-4xl text-xl font-mono">
+          baseSwap
+        </h3>
 
         <div>
           <WalletConnect setMessage={setMessage} />
         </div>
       </div>
-      <div className="p-7 md:flex md:flex-row md:justify-center md:items-center bg-black bg-cover bg-center w-full">
+      <div className="p-7 md:flex md:flex-row md:justify-center md:items-cente bg-cover bg-center w-full">
         <div className="max-w-6xl mx-auto p-4 font-bold bg-black outline-2 outline-gray-600 rounded-2xl">
           <div className="md:flex md:flex-row md:gap-4 w-full">
             <div className="flex-1 flex flex-col space-y-3 p-4 border rounded-2xl shadow mb-4 md:m-16 bg-black md:h-72 outline-gray-600 outline-2">
@@ -148,7 +210,7 @@ export default function App() {
                 placeholder="Paste Token Address (0x...)"
               />
               <button
-                onClick={fetchToken}
+                onClick={handleFetchToken}
                 disabled={loading}
                 className={`w-full py-2 rounded-xl shadow text-white font-semibold transition ${
                   loading
@@ -173,12 +235,12 @@ export default function App() {
                 </div>
               )}
 
-              <TokenInfo tokenData={tokenData} />
+              {tokenData && <TokenInfo tokenData={tokenData} />}
             </div>
 
             <div className="flex-1">
               <Swap
-                tokenAddress={inputAddress?.trim()}
+                tokenAddress={fetchedTokenAddress}
                 tokenData={tokenData}
                 ethPrice={ethPrice}
               />

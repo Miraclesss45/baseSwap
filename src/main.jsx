@@ -2,6 +2,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import "./index.css";
 
 // Wagmi & viem
@@ -37,12 +38,14 @@ const queryClient = new QueryClient();
 // -------------------
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <WagmiConfig config={wagmiConfig}>
-        <ConnectKitProvider>
-          <App />
-        </ConnectKitProvider>
-      </WagmiConfig>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <WagmiConfig config={wagmiConfig}>
+          <ConnectKitProvider>
+            <App />
+          </ConnectKitProvider>
+        </WagmiConfig>
+      </QueryClientProvider>
+    </ErrorBoundary>
   </React.StrictMode>
 );
