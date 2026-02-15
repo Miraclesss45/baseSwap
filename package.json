@@ -20,7 +20,7 @@
     "react-dom": "^18.2.0",
     "react-icons": "^5.5.0",
     "tailwindcss": "^4.1.17",
-    "viem": "^2.39.3",
+    "viem": "^2.45.3",
     "wagmi": "^2.19.4"
   },
   "devDependencies": {
