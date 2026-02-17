@@ -9,7 +9,8 @@ const format = (num) => {
   return Number(num).toFixed(4);
 };
 
-const percentColor = (value) => (value >= 0 ? "text-green-400" : "text-red-400");
+const percentColor = (value) =>
+  value >= 0 ? "text-green-400" : "text-red-400";
 
 const getChangeBg = (value) => {
   if (value > 0) return "bg-green-500/10 border-green-500/30";
@@ -20,15 +21,35 @@ const getChangeBg = (value) => {
 const getChangeIcon = (value) => {
   if (value > 0) {
     return (
-      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+      <svg
+        className="w-3 h-3"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="3"
+          d="M5 10l7-7m0 0l7 7m-7-7v18"
+        />
       </svg>
     );
   }
   if (value < 0) {
     return (
-      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+      <svg
+        className="w-3 h-3"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="3"
+          d="M19 14l-7 7m0 0l-7-7m7 7V3"
+        />
       </svg>
     );
   }
@@ -53,7 +74,7 @@ export default function TokenInfo({ tokenData }) {
   };
 
   const priceFormatted = Number(tokenData.priceUsd).toFixed(
-    tokenData.priceUsd < 0.01 ? 8 : tokenData.priceUsd < 1 ? 6 : 2
+    tokenData.priceUsd < 0.01 ? 8 : tokenData.priceUsd < 1 ? 6 : 2,
   );
 
   return (
@@ -62,7 +83,7 @@ export default function TokenInfo({ tokenData }) {
       <div className="relative overflow-hidden bg-gradient-to-br from-slate-900/60 via-slate-900/40 to-slate-800/40 backdrop-blur-xl border border-cyan-500/30 rounded-2xl shadow-2xl shadow-cyan-500/10 hover:shadow-cyan-500/20 transition-all duration-500 group">
         {/* Animated gradient background */}
         <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/5 via-blue-500/5 to-cyan-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-        
+
         <div className="relative p-6">
           {/* Token Identity Section */}
           <div className="flex items-start justify-between mb-6">
@@ -82,11 +103,13 @@ export default function TokenInfo({ tokenData }) {
 
               {/* Token Name & Symbol */}
               <div className="flex-1">
-                <h2 className="text-2xl font-bold text-white mb-1 tracking-tight">
+                <h2 className="text-sm md:text-2xl font-bold text-white mb-1 tracking-tight">
                   {tokenData.name}
                 </h2>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-cyan-400 font-bold text-lg">{tokenData.symbol}</span>
+                  <span className="text-cyan-400 font-bold text-lg">
+                    {tokenData.symbol}
+                  </span>
                   <span className="px-2 py-0.5 bg-cyan-500/20 border border-cyan-500/40 rounded-md text-cyan-400 text-xs font-bold uppercase tracking-wide">
                     BASE
                   </span>
@@ -100,7 +123,9 @@ export default function TokenInfo({ tokenData }) {
                 ${priceFormatted}
               </div>
               {tokenData.change24h !== undefined && (
-                <div className={`flex items-center justify-end gap-1 ${percentColor(tokenData.change24h)}`}>
+                <div
+                  className={`flex items-center justify-end gap-1 ${percentColor(tokenData.change24h)}`}
+                >
                   {getChangeIcon(tokenData.change24h)}
                   <span className="font-bold text-sm tabular-nums">
                     {Math.abs(tokenData.change24h).toFixed(2)}%
@@ -114,10 +139,22 @@ export default function TokenInfo({ tokenData }) {
           {/* Contract Address */}
           <div className="flex items-center gap-2 p-3 bg-slate-950/50 border border-slate-700/50 rounded-xl hover:border-cyan-500/50 transition-all group/address">
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              <svg
+                className="w-4 h-4 text-slate-400 flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
               </svg>
-              <span className="text-slate-400 text-xs font-medium flex-shrink-0">CONTRACT</span>
+              <span className="text-slate-400 text-xs font-medium flex-shrink-0">
+                CONTRACT
+              </span>
               <span className="text-cyan-400 font-mono text-sm truncate">
                 {tokenData.address}
               </span>
@@ -131,12 +168,32 @@ export default function TokenInfo({ tokenData }) {
                 title="Copy address"
               >
                 {copied ? (
-                  <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  <svg
+                    className="w-4 h-4 text-green-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M5 13l4 4L19 7"
+                    />
                   </svg>
                 ) : (
-                  <svg className="w-4 h-4 text-slate-400 group-hover/copy:text-cyan-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  <svg
+                    className="w-4 h-4 text-slate-400 group-hover/copy:text-cyan-400 transition-colors"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                    />
                   </svg>
                 )}
                 {copied && (
@@ -153,8 +210,18 @@ export default function TokenInfo({ tokenData }) {
                 className="p-2 hover:bg-cyan-500/20 rounded-lg transition-all group/link"
                 title="View on BaseScan"
               >
-                <svg className="w-4 h-4 text-slate-400 group-hover/link:text-cyan-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                <svg
+                  className="w-4 h-4 text-slate-400 group-hover/link:text-cyan-400 transition-colors"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                  />
                 </svg>
               </a>
             </div>
@@ -173,14 +240,18 @@ export default function TokenInfo({ tokenData }) {
           <div
             key={label}
             className={`relative overflow-hidden backdrop-blur-sm border rounded-xl p-4 transition-all duration-300 hover:scale-105 group/change ${getChangeBg(
-              value
+              value,
             )}`}
             style={{ animationDelay: `${index * 50}ms` }}
           >
             {/* Background percentage bar */}
             <div
               className={`absolute bottom-0 left-0 h-1 transition-all duration-500 ${
-                value > 0 ? "bg-green-400/30" : value < 0 ? "bg-red-400/30" : "bg-slate-400/30"
+                value > 0
+                  ? "bg-green-400/30"
+                  : value < 0
+                    ? "bg-red-400/30"
+                    : "bg-slate-400/30"
               }`}
               style={{ width: `${Math.min(Math.abs(value) * 10, 100)}%` }}
             ></div>
@@ -189,7 +260,9 @@ export default function TokenInfo({ tokenData }) {
               <div className="text-slate-400 text-xs font-semibold mb-1.5 uppercase tracking-wider">
                 {label}
               </div>
-              <div className={`flex items-center gap-1.5 ${percentColor(value)}`}>
+              <div
+                className={`flex items-center gap-1.5 ${percentColor(value)}`}
+              >
                 {getChangeIcon(value)}
                 <span className="text-2xl font-bold tabular-nums">
                   {value > 0 && "+"}
@@ -206,8 +279,18 @@ export default function TokenInfo({ tokenData }) {
         {/* Card Header */}
         <div className="px-6 py-4 border-b border-slate-800/50 bg-gradient-to-r from-blue-500/5 to-cyan-500/5">
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
-            <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            <svg
+              className="w-5 h-5 text-blue-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+              />
             </svg>
             MARKET DATA
           </h3>
@@ -218,8 +301,18 @@ export default function TokenInfo({ tokenData }) {
           {[
             {
               icon: (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
                 </svg>
               ),
               label: "Market Cap",
@@ -228,8 +321,18 @@ export default function TokenInfo({ tokenData }) {
             },
             {
               icon: (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
+                  />
                 </svg>
               ),
               label: "Fully Diluted Value",
@@ -238,8 +341,18 @@ export default function TokenInfo({ tokenData }) {
             },
             {
               icon: (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"
+                  />
                 </svg>
               ),
               label: "Liquidity",
@@ -249,24 +362,24 @@ export default function TokenInfo({ tokenData }) {
             },
             {
               icon: (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+                  />
                 </svg>
               ),
               label: "Total Supply",
               value: format(tokenData.totalSupply),
               color: "slate",
             },
-            // {
-            //   icon: (
-            //     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            //       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-            //     </svg>
-            //   ),
-            //   label: "Circulating Supply",
-            //   value: format(tokenData.circulatingSupply),
-            //   color: "slate",
-            // },
           ].map((stat, index) => (
             <div
               key={stat.label}
@@ -283,15 +396,17 @@ export default function TokenInfo({ tokenData }) {
                     stat.color === "cyan"
                       ? "bg-cyan-500/10 text-cyan-400"
                       : stat.color === "blue"
-                      ? "bg-blue-500/10 text-blue-400"
-                      : stat.color === "purple"
-                      ? "bg-purple-500/10 text-purple-400"
-                      : "bg-slate-500/10 text-slate-400"
+                        ? "bg-blue-500/10 text-blue-400"
+                        : stat.color === "purple"
+                          ? "bg-purple-500/10 text-purple-400"
+                          : "bg-slate-500/10 text-slate-400"
                   }`}
                 >
                   {stat.icon}
                 </div>
-                <span className="text-slate-300 font-medium text-sm">{stat.label}</span>
+                <span className="text-slate-300 font-medium text-sm">
+                  {stat.label}
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 {stat.label === "Liquidity" && (
@@ -318,8 +433,18 @@ export default function TokenInfo({ tokenData }) {
           rel="noopener noreferrer"
           className="group flex items-center justify-center gap-2 p-4 bg-slate-900/40 hover:bg-cyan-500/20 border border-slate-700/50 hover:border-cyan-500/50 rounded-xl transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-cyan-500/20"
         >
-          <svg className="w-5 h-5 text-slate-400 group-hover:text-cyan-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          <svg
+            className="w-5 h-5 text-slate-400 group-hover:text-cyan-400 transition-colors"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+            />
           </svg>
           <span className="font-bold text-sm text-slate-300 group-hover:text-cyan-400 transition-colors">
             VIEW ON BASESCAN
@@ -332,8 +457,18 @@ export default function TokenInfo({ tokenData }) {
           rel="noopener noreferrer"
           className="group flex items-center justify-center gap-2 p-4 bg-slate-900/40 hover:bg-blue-500/20 border border-slate-700/50 hover:border-blue-500/50 rounded-xl transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-blue-500/20"
         >
-          <svg className="w-5 h-5 text-slate-400 group-hover:text-blue-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+          <svg
+            className="w-5 h-5 text-slate-400 group-hover:text-blue-400 transition-colors"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"
+            />
           </svg>
           <span className="font-bold text-sm text-slate-300 group-hover:text-blue-400 transition-colors">
             VIEW CHART
@@ -343,11 +478,22 @@ export default function TokenInfo({ tokenData }) {
 
       {/* Info Notice */}
       <div className="flex items-start gap-3 p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
-        <svg className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <svg
+          className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
         </svg>
         <p className="text-blue-300 text-xs leading-relaxed">
-          Data is fetched from Moralis and DexScreener. Price changes are calculated from DEX pair data and may vary across different platforms.
+          Data is fetched from Moralis and DexScreener. Price changes are
+          calculated from DEX pair data and may vary across different platforms.
         </p>
       </div>
     </div>
