@@ -1,4 +1,4 @@
-// src/components/Swap.jsx - MOBILE-OPTIMIZED VERSION
+// src/components/Swap.jsx - MOBILE-OPTIMIZED VERSION WITH TOKEN LOGOS & MAX BUTTON
 import { useState, useEffect, useCallback, useRef } from "react";
 import { LuArrowUpDown, LuSettings2, LuZap } from "react-icons/lu";
 import {
@@ -19,23 +19,39 @@ const ROUTER_ADDRESS = getAddress("0x4752ba5dbc23f44d87826276bf6d2a606c4e5001");
 const WETH_ADDRESS = getAddress("0x4200000000000000000000000000000000000006");
 const DEFAULT_GAS_EST = "0.005";
 const GAS_ESTIMATE_DEBOUNCE_MS = 500;
+const MORALIS_API_KEY = import.meta.env.VITE_MORALIS_API_KEY;
+const BASE_CHAIN = "0x2105";
+
+// ETH logo as base64 data URI
+const ETH_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23627EEA'/%3E%3Cg fill='%23FFF' fill-rule='nonzero'%3E%3Cpath fill-opacity='.602' d='M16.498 4v8.87l7.497 3.35z'/%3E%3Cpath d='M16.498 4L9 16.22l7.498-3.35z'/%3E%3Cpath fill-opacity='.602' d='M16.498 21.968v6.027L24 17.616z'/%3E%3Cpath d='M16.498 27.995v-6.028L9 17.616z'/%3E%3Cpath fill-opacity='.2' d='M16.498 20.573l7.497-4.353-7.497-3.348z'/%3E%3Cpath fill-opacity='.602' d='M9 16.22l7.498 4.353v-7.701z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E";
 
 // ─── Sub-components ────────────────────────────────────────────────────────
 
-function TokenPill({ isEth, symbol }) {
+function TokenPill({ isEth, symbol, logoUrl }) {
+  const [imgError, setImgError] = useState(false);
   const label = isEth ? "ETH" : symbol || "TOKEN";
   const initials = isEth ? "Ξ" : label.slice(0, 2).toUpperCase();
   const bgGradient = isEth
     ? "from-[#627eea] to-[#8fa4f2]"
     : "from-cyan-500 to-blue-500";
   
+  const displayLogo = isEth ? ETH_LOGO : logoUrl;
+  const showImage = displayLogo && !imgError;
+  
   return (
-    // ✅ MOBILE FIX: Better padding and sizing
     <div className="flex items-center gap-2 shrink-0 px-3 py-2 sm:py-1.5 rounded-full border border-white/[0.07] bg-white/[0.04]">
-      <span className={`flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold font-mono shrink-0 bg-gradient-to-br ${bgGradient} text-white`}>
-        {initials}
-      </span>
-      {/* ✅ MOBILE FIX: Bigger text on mobile */}
+      {showImage ? (
+        <img 
+          src={displayLogo}
+          alt={label}
+          className="w-6 h-6 rounded-full shrink-0 object-cover"
+          onError={() => setImgError(true)}
+        />
+      ) : (
+        <span className={`flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold font-mono shrink-0 bg-gradient-to-br ${bgGradient} text-white`}>
+          {initials}
+        </span>
+      )}
       <span className="font-mono text-sm sm:text-xs font-semibold text-white tracking-wide">
         {label}
       </span>
@@ -52,9 +68,7 @@ function StatRow({ label, value, accent = "cyan", shortLabel }) {
     muted: "text-slate-500",
   };
   return (
-    // ✅ MOBILE FIX: Better spacing
     <div className="flex items-center justify-between gap-3">
-      {/* ✅ MOBILE FIX: 11px minimum text size, show short label on mobile */}
       <span className="font-mono text-[11px] sm:text-[10px] text-slate-500 tracking-widest uppercase">
         <span className="sm:hidden">{shortLabel || label}</span>
         <span className="hidden sm:inline">{label}</span>
@@ -74,7 +88,6 @@ function StatusBadge({ type, children }) {
   };
   const icon = { success: "✓", error: "⚠", warn: "⚠" };
   return (
-    // ✅ MOBILE FIX: Better text size
     <div className={`flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl border text-xs sm:text-[11px] font-mono leading-relaxed ${map[type]}`}>
       <span className="shrink-0 mt-px">{icon[type]}</span>
       <span className="break-words">{children}</span>
@@ -93,17 +106,18 @@ function InputBox({
   balance,
   showBalance,
   dimmed,
+  logoUrl,
+  onMaxClick,
+  showMax,
 }) {
   const [focused, setFocused] = useState(false);
   
   return (
-    // ✅ MOBILE FIX: More padding on mobile
     <div className={`px-5 py-4 sm:px-4 sm:py-3.5 rounded-xl transition-all duration-200 bg-white/[0.025] ${
       focused && !readOnly
         ? "border-cyan-400/35 ring-2 ring-cyan-400/[0.06]"
         : "border-white/[0.06]"
     } border`}>
-      {/* ✅ MOBILE FIX: Bigger label text */}
       <span className="font-mono text-[11px] sm:text-[10px] md:text-[9px] text-slate-600 tracking-[0.15em] uppercase mb-2 block">
         {label}
       </span>
@@ -111,12 +125,25 @@ function InputBox({
         <input
           type="number"
           step="any"
+          min="0"
           value={value}
           placeholder="0.0"
           readOnly={readOnly}
           onFocus={() => !readOnly && setFocused(true)}
           onBlur={() => setFocused(false)}
-          onChange={onChange ? (e) => onChange(e.target.value) : undefined}
+          onChange={onChange ? (e) => {
+            const val = e.target.value;
+            // Prevent negative values
+            if (val === "" || parseFloat(val) >= 0) {
+              onChange(val);
+            }
+          } : undefined}
+          onKeyDown={(e) => {
+            // Prevent minus sign and 'e' (exponential)
+            if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+              e.preventDefault();
+            }
+          }}
           className={`flex-1 min-w-0 bg-transparent outline-none border-none font-mono 
             text-xl sm:text-2xl font-bold
             tabular-nums leading-none
@@ -125,15 +152,24 @@ function InputBox({
             [&::-webkit-inner-spin-button]:appearance-none
             ${dimmed ? "text-slate-400" : "text-white"} placeholder-slate-700`}
         />
-        <TokenPill isEth={isEth} symbol={symbol} />
+        <TokenPill isEth={isEth} symbol={symbol} logoUrl={logoUrl} />
       </div>
-      {/* ✅ MOBILE FIX: Better text size */}
       <div className="flex items-center justify-between mt-2">
         <span className="font-mono text-[11px] sm:text-[10px] text-slate-600">{usd}</span>
         {showBalance && (
-          <span className="font-mono text-[11px] sm:text-[10px] text-slate-600 tabular-nums">
-            Bal: <span className="text-cyan-400 font-semibold">{balance}</span>
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[11px] sm:text-[10px] text-slate-600 tabular-nums">
+              Bal: <span className="text-cyan-400 font-semibold">{balance}</span>
+            </span>
+            {showMax && onMaxClick && (
+              <button
+                onClick={onMaxClick}
+                className="px-2 py-0.5 rounded-md font-mono text-[10px] font-bold tracking-wider uppercase transition-all duration-150 bg-cyan-400/10 border border-cyan-400/30 text-cyan-400 hover:bg-cyan-400/20 active:scale-95"
+              >
+                MAX
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -171,7 +207,6 @@ function SwapButton({ btnStyle, label, disabled, onClick }) {
   const v = variants[btnStyle] ?? variants.disabled;
   
   return (
-    // ✅ MOBILE FIX: Bigger text and better padding on mobile
     <button
       className={`relative w-full py-4 sm:py-3.5 rounded-xl font-mono 
         text-sm sm:text-xs font-bold 
@@ -254,12 +289,58 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [lastEdited, setLastEdited] = useState("");
+  const [tokenLogo, setTokenLogo] = useState(null);
 
   const tokenSymbol = tokenData?.symbol ?? "TOKEN";
   const tokenName = tokenData?.name ?? "Token";
   const actualDecimals = tokBalData?.decimals ?? tokenData?.decimals ?? 18;
   const tokenPriceUsd = Number(tokenData?.priceUsd) || null;
   const isCorrectNetwork = chain?.id === base.id;
+
+  // Fetch token logo from Moralis
+  useEffect(() => {
+    let mounted = true;
+    
+    const fetchTokenLogo = async () => {
+      if (!checksummed || !MORALIS_API_KEY) {
+        setTokenLogo(null);
+        return;
+      }
+
+      try {
+        const response = await axios.get(
+          "https://deep-index.moralis.io/api/v2.2/erc20/metadata",
+          {
+            params: { 
+              chain: BASE_CHAIN, 
+              addresses: [checksummed] 
+            },
+            headers: { "X-API-Key": MORALIS_API_KEY },
+            timeout: 5000,
+          }
+        );
+
+        if (mounted && response.data?.[0]?.logo) {
+          setTokenLogo(response.data[0].logo);
+        } else if (mounted) {
+          // Fallback to tokenData logo if available
+          setTokenLogo(tokenData?.logo || tokenData?.dexLogo || null);
+        }
+      } catch (error) {
+        console.error("Failed to fetch token logo:", error);
+        if (mounted) {
+          // Fallback to tokenData logo if available
+          setTokenLogo(tokenData?.logo || tokenData?.dexLogo || null);
+        }
+      }
+    };
+
+    fetchTokenLogo();
+    
+    return () => {
+      mounted = false;
+    };
+  }, [checksummed, tokenData]);
 
   useEffect(() => {
     let mounted = true;
@@ -577,14 +658,34 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
     }
   };
 
-  // ✅ MOBILE FIX: Show 4 decimals on mobile, 6 on desktop
   const formatBalance = (bal, isMobile = false) => {
     return isMobile ? bal.toFixed(4) : bal.toFixed(6);
+  };
+
+  const handleMaxClick = (isTopInput) => {
+    if (isTopInput) {
+      // Top input - set max balance
+      if (reversed) {
+        // Top is token
+        const maxToken = userTokenBalance.toString();
+        setTokenAmount(maxToken);
+        setEthAmount(maxToken ? calcEthFromToken(maxToken) : "");
+        setLastEdited("token");
+      } else {
+        // Top is ETH - leave some for gas
+        const maxEth = Math.max(0, userEthBalance - Number(estimatedGas) - 0.001);
+        const maxEthStr = maxEth.toFixed(6);
+        setEthAmount(maxEthStr);
+        setTokenAmount(maxEthStr ? calcTokenFromEth(maxEthStr) : "");
+        setLastEdited("eth");
+      }
+    }
   };
 
   const top = {
     isEth: !reversed,
     symbol: reversed ? tokenSymbol : "ETH",
+    logoUrl: reversed ? tokenLogo : null,
     value: reversed ? tokenAmount : ethAmount,
     usd: reversed ? tokenUsdVal : ethUsdVal,
     balance: reversed
@@ -600,16 +701,20 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
         setTokenAmount(v ? calcTokenFromEth(v) : "");
       }
     },
+    onMaxClick: () => handleMaxClick(true),
+    showMax: true,
   };
   
   const bot = {
     isEth: reversed,
     symbol: reversed ? "ETH" : tokenSymbol,
+    logoUrl: reversed ? null : tokenLogo,
     value: reversed ? ethAmount : tokenAmount,
     usd: reversed ? ethUsdVal : tokenUsdVal,
     balance: reversed
       ? `${formatBalance(userEthBalance, true)} ETH`
       : `${formatBalance(userTokenBalance, true)} ${tokenSymbol}`,
+    showMax: false,
   };
 
   let btnStyle = "disabled",
@@ -645,9 +750,7 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
 
   if (!checksummed) {
     return (
-      // ✅ MOBILE FIX: Better empty state padding
       <div className="flex flex-col items-center justify-center px-6 py-12 sm:py-16 rounded-2xl text-center bg-white/[0.01] border border-dashed border-white/[0.06]">
-        {/* ✅ MOBILE FIX: Bigger icon box */}
         <div className="w-12 h-12 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center mb-3 bg-white/[0.03] border border-white/[0.06]">
           <LuArrowUpDown className="text-slate-700" size={20} />
         </div>
@@ -662,16 +765,13 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
   }
 
   return (
-    // ✅ MOBILE FIX: Better padding
     <div className="relative rounded-2xl overflow-hidden w-full bg-[#0a0f1a] border border-white/[0.06]">
       <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-500/30 via-blue-500/50 via-cyan-500/30 to-transparent" />
       <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-64 h-32 rounded-full pointer-events-none blur-3xl opacity-[0.06] bg-[radial-gradient(ellipse,#22d3ee,transparent)]" />
 
-      {/* ✅ MOBILE FIX: More padding on mobile */}
       <div className="relative p-6 sm:p-5 md:p-6 flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div>
-            {/* ✅ MOBILE FIX: Better text sizing */}
             <h2 className="font-display text-lg sm:text-base font-bold text-white tracking-tight">
               Swap
             </h2>
@@ -679,7 +779,6 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
               {tokenData ? `${tokenName} / ETH · Base` : "Base Network"}
             </p>
           </div>
-          {/* ✅ MOBILE FIX: Bigger settings button on mobile */}
           <button
             title="Settings"
             className="flex items-center justify-center w-10 h-10 sm:w-8 sm:h-8 rounded-lg text-slate-600 hover:text-cyan-400 transition-colors duration-200 border border-white/[0.06] bg-white/[0.02]"
@@ -690,11 +789,9 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
 
         {isConnected && !isCorrectNetwork && (
           <div className="flex flex-col items-center gap-3 px-4 py-3 rounded-xl text-center bg-red-500/[0.08] border border-red-500/20">
-            {/* ✅ MOBILE FIX: Better text size */}
             <p className="font-mono text-xs sm:text-[11px] text-red-400 tracking-wide">
               Connected to <strong>{chain?.name || "wrong network"}</strong>
             </p>
-            {/* ✅ MOBILE FIX: Better button sizing */}
             <button
               onClick={() => switchChain({ chainId: base.id })}
               className="px-5 py-2 sm:px-4 sm:py-1.5 rounded-lg font-mono text-xs sm:text-[11px] font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] bg-gradient-to-br from-red-600 to-red-500 shadow-[0_4px_16px_rgba(239,68,68,0.25)]"
@@ -717,13 +814,15 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
             onChange={top.onChange}
             isEth={top.isEth}
             symbol={top.symbol}
+            logoUrl={top.logoUrl}
             usd={top.usd}
             balance={top.balance}
             showBalance={isConnected}
+            onMaxClick={top.onMaxClick}
+            showMax={top.showMax}
           />
 
           <div className="relative flex items-center justify-center h-0 z-10">
-            {/* ✅ MOBILE FIX: Bigger flip button on mobile */}
             <button
               onClick={() => setReversed((r) => !r)}
               className="absolute flex items-center justify-center w-11 h-11 sm:w-9 sm:h-9 rounded-xl text-slate-500 transition-all duration-300 hover:text-cyan-400 hover:rotate-180 active:scale-90 bg-[#0a0f1a] border-2 border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.4)] hover:border-cyan-400/30 hover:shadow-[0_0_12px_rgba(34,211,238,0.15)]"
@@ -738,15 +837,16 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
             readOnly
             isEth={bot.isEth}
             symbol={bot.symbol}
+            logoUrl={bot.logoUrl}
             usd={bot.usd}
             balance={bot.balance}
             showBalance={isConnected}
             dimmed
+            showMax={bot.showMax}
           />
         </div>
 
         {outputAmount && Number(outputAmount) > 0 && (
-          // ✅ MOBILE FIX: Better text sizing
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg overflow-hidden bg-indigo-500/[0.05] border border-indigo-500/[0.12]">
             <span className="font-mono text-[11px] sm:text-[10px] md:text-[9px] font-bold tracking-[0.15em] uppercase text-indigo-400 shrink-0">
               Route
@@ -759,7 +859,6 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
           </div>
         )}
 
-        {/* ✅ MOBILE FIX: Better padding and text */}
         <div className="flex flex-col gap-2.5 px-5 py-4 sm:px-4 sm:py-3.5 rounded-xl bg-white/[0.02] border border-white/[0.05]">
           <StatRow
             label="ETH Price"
@@ -799,13 +898,11 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
           <div className="h-px bg-white/[0.04]" />
 
           <div className="flex items-center justify-between gap-3">
-            {/* ✅ MOBILE FIX: Better text size */}
             <span className="font-mono text-[11px] sm:text-[10px] text-slate-500 tracking-widest uppercase">
               Slippage
             </span>
             <div className="flex items-center gap-1.5">
               {[0.1, 0.5, 1].map((p) => (
-                // ✅ MOBILE FIX: Bigger slippage buttons on mobile
                 <button
                   key={p}
                   onClick={() => setSlippage(p)}
@@ -818,7 +915,6 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
                   {p}%
                 </button>
               ))}
-              {/* ✅ MOBILE FIX: Better custom input */}
               <div className="flex items-center gap-1 px-3 py-2 sm:px-2 sm:py-1 rounded-md bg-white/[0.03] border border-white/[0.06]">
                 <input
                   type="number"
@@ -826,7 +922,17 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
                   max="50"
                   step="0.1"
                   value={slippage}
-                  onChange={(e) => setSlippage(Number(e.target.value))}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val) && val >= 0) {
+                      setSlippage(val);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                      e.preventDefault();
+                    }
+                  }}
                   className="w-9 sm:w-8 bg-transparent outline-none font-mono text-xs sm:text-[11px] sm:text-[10px] font-bold text-white text-right tabular-nums"
                 />
                 <span className="font-mono text-xs sm:text-[11px] sm:text-[10px] text-amber-400 font-bold">
@@ -839,7 +945,6 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
           {isConnected && (
             <>
               <div className="h-px bg-white/[0.04]" />
-              {/* ✅ MOBILE FIX: Stack balances on very small screens */}
               <div className="flex flex-col xs:flex-row items-start xs:items-center justify-between gap-2">
                 <span className="font-mono text-[11px] sm:text-[10px] text-slate-600 tracking-widest uppercase flex items-center gap-1.5">
                   <span className="relative flex h-1.5 w-1.5 shrink-0">
@@ -849,7 +954,6 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
                   Wallet
                 </span>
                 <div className="flex items-center gap-3 sm:gap-4">
-                  {/* ✅ MOBILE FIX: 4 decimals mobile, 6 desktop via CSS */}
                   <span className="font-mono text-xs sm:text-[11px] sm:text-[10px] tabular-nums">
                     <span className="text-slate-600">ETH </span>
                     <span className="text-cyan-400 font-semibold">
@@ -874,7 +978,6 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
 
         {successMsg && <StatusBadge type="success">{successMsg}</StatusBadge>}
         {errorMsg && <StatusBadge type="error">{errorMsg}</StatusBadge>}
-        {/* ✅ MOBILE FIX: Better warning text with line breaks */}
         {insufficientEth && !errorMsg && (
           <StatusBadge type="warn">
             <span className="sm:hidden">
