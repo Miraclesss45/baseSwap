@@ -2,14 +2,17 @@
 import { ConnectKitButton } from "connectkit";
 import { useAccount } from "wagmi";
 
-export default function WalletConnect({ setMessage }) {
+export default function WalletConnect() {
   const { address } = useAccount();
 
-  const short = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : null;
+  // Short address for avatar initials when ENS unavailable
+  const initials = address ? address.slice(2, 4).toUpperCase() : "??";
+  const short    = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : null;
 
   return (
     <ConnectKitButton.Custom>
       {({ isConnected, isConnecting, show, truncatedAddress, ensName }) => {
+
         // ── Connected ──────────────────────────────────────────────────
         if (isConnected) {
           return (
@@ -20,31 +23,22 @@ export default function WalletConnect({ setMessage }) {
                          hover:bg-cyan-500/10 hover:border-cyan-400/30
                          transition-all duration-200 active:scale-[0.97] select-none"
             >
-              {/* Avatar circle */}
+              {/* Avatar */}
               <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-500 shrink-0 flex items-center justify-center">
-                <span className="font-mono text-[9px] font-bold text-white">
-                  {address ? address.slice(2, 4).toUpperCase() : "??"}
-                </span>
+                <span className="font-mono text-[9px] font-bold text-white">{initials}</span>
               </div>
 
-              {/* Address */}
+              {/* Address / ENS */}
               <span className="font-mono text-[11px] font-semibold text-cyan-300 tabular-nums tracking-wide">
                 {ensName ?? truncatedAddress ?? short}
               </span>
 
-              {/* Caret */}
+              {/* Dropdown caret */}
               <svg
                 className="w-3 h-3 text-slate-600 group-hover:text-cyan-400 transition-colors duration-200 shrink-0"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" viewBox="0 0 24 24"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M19 9l-7 7-7-7"
-                />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
               </svg>
             </button>
           );
@@ -76,24 +70,15 @@ export default function WalletConnect({ setMessage }) {
                        hover:-translate-y-px
                        font-mono text-[11px] font-bold text-white
                        tracking-widest uppercase
-                       shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/40
+                       shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/30
                        transition-all duration-200 active:scale-[0.97] select-none overflow-hidden"
           >
-            {/* Shimmer */}
+            {/* Shimmer overlay */}
             <div className="absolute inset-0 bg-gradient-to-b from-white/[0.08] to-transparent pointer-events-none" />
 
-            <svg
-              className="relative w-3.5 h-3.5 shrink-0"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
-              />
+            <svg className="relative w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
             <span className="relative">Connect</span>
           </button>
