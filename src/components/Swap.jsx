@@ -827,25 +827,35 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
   const formatBalance = (bal) => formatMaxBalance(bal);
 
   const handleMaxClick = (boxType) => {
-    suppressNextQuoteRef.current = false; // user is editing — allow quote
-    if (boxType === 'top') {
-      if (reversed) {
-        setTokenAmount(formatMaxBalance(userTokenBalance));
-        setEthAmount("");
-      } else {
-        const gasBuffer = Math.max(Number(estimatedGas) * GAS_BUFFER_MULTIPLIER, 0.005);
-        setEthAmount(formatMaxBalance(Math.max(0, userEthBalance - gasBuffer)));
-        setTokenAmount("");
-      }
+    suppressNextQuoteRef.current = false;
+
+    // ETH max: work entirely in wei (BigInt) to avoid float precision loss.
+    // ethBalData.value is the exact on-chain balance in wei.
+    // We subtract a gas buffer in wei then format back to ether.
+    const getMaxEth = () => {
+      if (!ethBalData?.value) return "0";
+      const balWei    = ethBalData.value;
+      const bufferEth = estimatedGas !== "0" ? Number(estimatedGas) * GAS_BUFFER_MULTIPLIER : 0.005;
+      const bufferWei = BigInt(Math.ceil(bufferEth * 1e18));
+      // If balance covers the buffer, subtract it so they don't run out of gas.
+      // If balance is less than the buffer, show the full balance — never return 0
+      // just because the buffer is larger. The swap will warn them about gas anyway.
+      const maxWei = balWei > bufferWei ? balWei - bufferWei : balWei;
+      return formatEther(maxWei);
+    };
+
+    // Token max: tokBalData.value is the exact on-chain balance in token decimals.
+    const getMaxToken = () => {
+      if (!tokBalData?.value) return "0";
+      return formatUnits(tokBalData.value, actualDecimals);
+    };
+
+    if (boxType === "top") {
+      if (reversed) { setTokenAmount(getMaxToken()); setEthAmount(""); }
+      else          { setEthAmount(getMaxEth());     setTokenAmount(""); }
     } else {
-      if (reversed) {
-        const gasBuffer = Math.max(Number(estimatedGas) * GAS_BUFFER_MULTIPLIER, 0.005);
-        setEthAmount(formatMaxBalance(Math.max(0, userEthBalance - gasBuffer)));
-        setTokenAmount("");
-      } else {
-        setTokenAmount(formatMaxBalance(userTokenBalance));
-        setEthAmount("");
-      }
+      if (reversed) { setEthAmount(getMaxEth());     setTokenAmount(""); }
+      else          { setTokenAmount(getMaxToken()); setEthAmount(""); }
     }
   };
 
