@@ -18,7 +18,31 @@ import {
 } from "wagmi";
 import { base } from "wagmi/chains";
 import { parseEther, parseUnits, formatEther, formatUnits, getAddress } from "viem";
-import ERC20ABI from "../abis/ERC20.json";
+// FIX 1: Inline minimal ERC-20 ABI instead of relying on an external JSON file.
+// If ../abis/ERC20.json is missing the entire component fails silently.
+// Only `allowance` and `approve` are needed here.
+const ERC20ABI = [
+  {
+    name: "allowance",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner",   type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    name: "approve",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "spender", type: "address" },
+      { name: "amount",  type: "uint256" },
+    ],
+    outputs: [{ type: "bool" }],
+  },
+];
 
 // ─── 1inch Constants ──────────────────────────────────────────────────────────
 const ONEINCH_ROUTER           = getAddress("0x111111125421cA6dc452d289314280a0f8842A65");
@@ -29,6 +53,9 @@ const NATIVE_ETH               = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 const DEFAULT_GAS_EST          = "0.005";
 const GAS_ESTIMATE_DEBOUNCE_MS = 600;
 const GAS_BUFFER_MULTIPLIER    = 1.5;
+// FIX 2: Use max uint256 for token approvals so users don't need to re-approve
+// on every swap (standard practice for DEX UIs).
+const MAX_UINT256 = BigInt("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
 
 // ETH logo data URI
 const ETH_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23627EEA'/%3E%3Cg fill='%23FFF' fill-rule='nonzero'%3E%3Cpath fill-opacity='.602' d='M16.498 4v8.87l7.497 3.35z'/%3E%3Cpath d='M16.498 4L9 16.22l7.498-3.35z'/%3E%3Cpath fill-opacity='.602' d='M16.498 21.968v6.027L24 17.616z'/%3E%3Cpath d='M16.498 27.995v-6.028L9 17.616z'/%3E%3Cpath fill-opacity='.2' d='M16.498 20.573l7.497-4.353-7.497-3.348z'/%3E%3Cpath fill-opacity='.602' d='M9 16.22l7.498 4.353v-7.701z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E";
@@ -36,9 +63,19 @@ const ETH_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' v
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
 const formatMaxBalance = (balance) => {
+  // Return the balance exactly as JavaScript represents it — no trimming.
+  // The only transformation needed: if JS chose scientific notation (e.g. 1.23e-7),
+  // convert to a plain decimal string because <input type="number"> cannot parse
+  // scientific notation and will show a blank field.
   try {
-    const str = balance.toString();
-    return str.includes('.') ? str.replace(/\.?0+$/, '') : str;
+    const num = Number(balance);
+    if (!isFinite(num) || isNaN(num)) return "0";
+    if (num === 0) return "0";
+    const str = num.toString();
+    if (!str.includes("e")) return str; // already plain decimal — return exactly as-is
+    // Scientific notation path: compute required decimal places then trim toFixed padding
+    const exp = Math.abs(Math.floor(Math.log10(Math.abs(num))));
+    return num.toFixed(Math.min(exp + 6, 18)).replace(/0+$/, "").replace(/\.$/, "");
   } catch { return "0"; }
 };
 
@@ -87,12 +124,15 @@ const fetchOneinchQuote = async ({ srcToken, dstToken, amount }) => {
  * Returns the tx object or throws a descriptive error.
  */
 const fetchOneinchSwap = async ({ srcToken, dstToken, amount, fromAddress, slippage }) => {
+  // FIX 3: Clamp slippage to 1inch's accepted range [0.01, 50].
+  // If the user sets >50 the API returns an error. Clamp silently.
+  const clampedSlippage = Math.min(50, Math.max(0.01, slippage));
   const params = new URLSearchParams({
     src:      srcToken,
     dst:      dstToken,
     amount:   amount.toString(),
     from:     fromAddress,
-    slippage: slippage.toString(),
+    slippage: clampedSlippage.toString(),
     origin:   fromAddress,
   });
   const res  = await fetch(`${ONEINCH_API}/swap?${params}`, { headers: oneinchHeaders() });
@@ -187,11 +227,16 @@ function InputBox({ label, value, onChange, readOnly, isEth, symbol, usd, balanc
           onFocus={() => !readOnly && setFocused(true)}
           onBlur={() => setFocused(false)}
           onChange={onChange ? (e) => {
-            const val = e.target.value;
-            if (val === "" || parseFloat(val) >= 0) onChange(val);
+            // Strip leading minus to block negatives from paste & mobile keyboards
+            // (which bypass onKeyDown). Also reject scientific notation strings.
+            const raw = e.target.value.replace(/^-+/, "");
+            if (raw === "" || (parseFloat(raw) >= 0 && !raw.includes("e") && !raw.includes("E"))) {
+              onChange(raw);
+            }
           } : undefined}
           onKeyDown={(e) => {
-            if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault();
+            // Block minus, plus, and e/E (scientific notation) on desktop keyboards
+            if (e.key === "-" || e.key === "+" || e.key === "e" || e.key === "E") e.preventDefault();
           }}
           className={`flex-1 min-w-0 bg-transparent outline-none border-none font-mono
             text-lg sm:text-xl md:text-2xl font-bold tabular-nums leading-none
@@ -411,8 +456,12 @@ function SettingsModal({ isOpen, onClose, slippage, setSlippage, deadline, setDe
 export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice }) {
   const { address, isConnected, chain } = useAccount();
 
-  let checksummed = null;
-  try { checksummed = tokenAddress ? getAddress(tokenAddress) : null; } catch { checksummed = null; }
+  // FIX 4: checksummed was declared with `let` + try/catch directly in the render body,
+  // causing it to recalculate on every render. useMemo is the correct pattern here.
+  const checksummed = useMemo(() => {
+    try { return tokenAddress ? getAddress(tokenAddress) : null; }
+    catch { return null; }
+  }, [tokenAddress]);
 
   // ── Balances ────────────────────────────────────────────────────────────────
   const { data: ethBalData, refetch: refetchEth, isError: ethBalError } = useBalance({
@@ -478,32 +527,46 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
   // Insufficient token balance check
   useEffect(() => {
     setInsufficientToken(reversed && !!tokenAmount && Number(tokenAmount) > userTokenBalance);
-  }, [reversed, tokenAmount, userTokenBalance]);
+  // FIX 5: `address` must be in deps — when the user switches accounts, userTokenBalance
+  // updates but this effect won't re-run without address in the dep array, leaving stale state.
+  }, [reversed, tokenAmount, userTokenBalance, address]);
 
   // ── 1inch Quote (debounced) ─────────────────────────────────────────────────
   //
-  // BUG FIX: The original code depended on both ethAmount and tokenAmount.
-  // When the quote set the output field (e.g. setTokenAmount), it triggered
-  // this effect AGAIN, causing a second API call per keystroke.
+  // ROOT CAUSE OF BOTH BUGS:
   //
-  // Fix: suppressNextQuoteRef acts as a one-shot gate.
-  //   • When WE set the output → suppressNextQuoteRef = true
-  //   • On next effect run (from that state change) → we see true, set false, return early
-  //   • No double-fetch.
+  // BUG 1 — "Always fetching quote":
+  //   publicClient was in the dep array. wagmi recreates its reference on every
+  //   render, so the effect fired in an endless loop even when the user typed
+  //   nothing. Fixed by accessing publicClient via a stable ref.
   //
+  // BUG 2 — "Output not showing":
+  //   Both ethAmount AND tokenAmount were in the dep array. When the quote
+  //   returned and set tokenAmount (the output), it re-triggered this effect.
+  //   The suppressNextQuoteRef gate consumed that one re-trigger, BUT because
+  //   publicClient also kept re-triggering the effect, the gate was exhausted
+  //   by spurious runs before the real output-set run arrived — wiping the
+  //   output immediately. Fixed by only watching the *input* field (inputAmount)
+  //   in the dep array, not both sides.
+  //
+  const publicClientRef = useRef(publicClient);
+  useEffect(() => { publicClientRef.current = publicClient; }, [publicClient]);
+
+  // Only the side the user types on drives this effect.
+  const inputAmount = reversed ? tokenAmount : ethAmount;
+
   useEffect(() => {
-    // Gate: if WE just set the output, skip this run
+    // Safety net: if WE just set the output field, skip this run.
     if (suppressNextQuoteRef.current) {
       suppressNextQuoteRef.current = false;
       return;
     }
 
-    const inputAmt = reversed ? tokenAmount : ethAmount;
-
-    // FIX: moved validity check BEFORE setQuoteLoading(true) to avoid
-    // briefly showing "Fetching Quote..." when input is empty/invalid
-    if (!checksummed || !isConnected || !isCorrectNetwork || !inputAmt || Number(inputAmt) <= 0) {
-      // Clear output when input is cleared
+    if (!checksummed || !isConnected || !isCorrectNetwork || !inputAmount || Number(inputAmount) <= 0) {
+      // Clear output when input is cleared.
+      // Reset first so any leftover true from a previous quote doesn't eat this run,
+      // then set true to prevent the output-clear from re-triggering the effect.
+      suppressNextQuoteRef.current = false;
       suppressNextQuoteRef.current = true;
       if (reversed) setEthAmount("");
       else          setTokenAmount("");
@@ -519,8 +582,8 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
         const srcToken  = reversed ? checksummed : NATIVE_ETH;
         const dstToken  = reversed ? NATIVE_ETH   : checksummed;
         const amountWei = reversed
-          ? parseUnits(truncateDecimals(inputAmt, actualDecimals), actualDecimals).toString()
-          : parseEther(inputAmt).toString();
+          ? parseUnits(truncateDecimals(inputAmount, actualDecimals), actualDecimals).toString()
+          : parseEther(inputAmount).toString();
 
         const quote = await fetchOneinchQuote({ srcToken, dstToken, amount: amountWei });
 
@@ -532,8 +595,8 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
           return;
         }
 
-        // Set output — arm the suppress gate BEFORE calling setState so the
-        // subsequent effect re-run is a no-op
+        // Arm the suppress gate BEFORE setState so the subsequent effect
+        // re-run caused by the output field changing is a no-op.
         suppressNextQuoteRef.current = true;
         if (reversed) {
           setEthAmount(formatEther(BigInt(quote.dstAmount)).replace(/\.?0+$/, ''));
@@ -541,9 +604,9 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
           setTokenAmount(formatUnits(BigInt(quote.dstAmount), actualDecimals).replace(/\.?0+$/, ''));
         }
 
-        // Estimate gas cost in ETH
+        // Use the ref so publicClient is never in the dep array.
         try {
-          const gasPrice = await publicClient.getGasPrice();
+          const gasPrice = await publicClientRef.current.getGasPrice();
           setEstimatedGas(Number(formatEther(BigInt(quote.estimatedGas) * gasPrice)).toFixed(6));
         } catch {
           setEstimatedGas(DEFAULT_GAS_EST);
@@ -557,14 +620,17 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
 
     return () => { cancelled = true; clearTimeout(timer); };
   }, [
-    ethAmount,
-    tokenAmount,
+    // Only the input the user types triggers a new quote.
+    // The output field (tokenAmount or ethAmount on the other side) is
+    // intentionally excluded — it's set BY this effect, not by the user.
+    inputAmount,
     reversed,
     checksummed,
     isConnected,
     isCorrectNetwork,
     actualDecimals,
-    publicClient,
+    // publicClient intentionally omitted — accessed via publicClientRef to
+    // prevent wagmi's per-render reference churn from re-triggering the effect.
   ]);
 
   // ── Derived values ───────────────────────────────────────────────────────────
@@ -600,6 +666,9 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
   const tokenUsdVal = tokenAmount && tokenPriceUsd
     ? `≈ $${(Number(tokenAmount) * tokenPriceUsd).toFixed(2)}` : "";
 
+  // Show both USD values together so the user sees both sides at once
+  const bothUsd = [ethUsdVal, tokenUsdVal].filter(Boolean).join("  ·  ");
+
   // ── Transaction history ──────────────────────────────────────────────────────
   const saveTxToHistory = useCallback((hash, type) => {
     try {
@@ -618,11 +687,16 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
   // tx was still being submitted). Now executeSwap's finally block handles it.
   const approveToken = async (amount) => {
     setSuccessMsg("Requesting token approval…");
+    // FIX 6: Approve MAX_UINT256 instead of the exact swap amount.
+    // Approving only the exact amount forces a new approval tx on every swap,
+    // wasting gas and degrading UX. Max approve is the DEX standard.
+    // Note: some security-conscious users prefer exact approvals — expose a setting if needed.
+    void amount; // amount param kept for API compatibility but we use max
     const hash = await walletClient.writeContract({
       address: checksummed,
       abi: ERC20ABI,
       functionName: "approve",
-      args: [ONEINCH_ROUTER, amount],
+      args: [ONEINCH_ROUTER, MAX_UINT256],
     });
     setSuccessMsg(`Approval pending · ${hash.slice(0, 10)}…`);
     const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 60_000 });
@@ -672,13 +746,34 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
       // Fetch swap tx from 1inch
       const swapTx = await fetchOneinchSwap({ srcToken, dstToken, amount: amountWei, fromAddress: address, slippage });
 
+      // FIX 7: Base is an EIP-1559 chain. Sending a type-0 tx with legacy `gasPrice`
+      // still works but is suboptimal — it overpays and may get deprioritized.
+      // Use EIP-1559 fields: maxFeePerGas + maxPriorityFeePerGas.
+      // We derive maxPriorityFeePerGas from eth_maxPriorityFeePerGas and set
+      // maxFeePerGas = baseFee * 2 + tip (generous buffer so the tx doesn't get stuck).
+      let maxFeePerGas, maxPriorityFeePerGas;
+      try {
+        const [block, tip] = await Promise.all([
+          publicClient.getBlock({ blockTag: "latest" }),
+          publicClient.estimateMaxPriorityFeePerGas(),
+        ]);
+        const baseFee = block.baseFeePerGas ?? BigInt(swapTx.gasPrice ?? "1000000000");
+        maxPriorityFeePerGas = tip;
+        maxFeePerGas = baseFee * 2n + tip;
+      } catch {
+        // Fallback to 1inch-provided gasPrice if EIP-1559 fields can't be fetched
+        maxFeePerGas = BigInt(swapTx.gasPrice ?? "1000000000");
+        maxPriorityFeePerGas = BigInt(swapTx.gasPrice ?? "1000000000");
+      }
+
       // Broadcast transaction
       const hash = await walletClient.sendTransaction({
-        to:       swapTx.to,
-        data:     swapTx.data,
-        value:    BigInt(swapTx.value ?? "0"),
-        gas:      BigInt(Math.ceil(Number(swapTx.gas) * 1.25)), // 25% buffer
-        gasPrice: BigInt(swapTx.gasPrice),
+        to:                  swapTx.to,
+        data:                swapTx.data,
+        value:               BigInt(swapTx.value ?? "0"),
+        gas:                 BigInt(Math.ceil(Number(swapTx.gas) * 1.25)), // 25% buffer
+        maxFeePerGas,
+        maxPriorityFeePerGas,
       });
 
       setSuccessMsg(`Submitted · ${hash.slice(0, 10)}…`);
@@ -701,7 +796,7 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
       let msg = "Swap failed";
       if      (err?.message?.includes("rejected"))                                     msg = "Transaction rejected";
       else if (err?.message?.includes("slippage") || err?.message?.includes("INSUFFICIENT_OUTPUT")) msg = "Price moved — try higher slippage";
-      else if (err?.message?.includes("timeout"))                                      msg = "Transaction timed out";
+      else if (err?.message?.includes("timeout"))  msg = "Tx timed out waiting for confirmation — check your wallet, it may still confirm";
       else if (err?.message?.includes("Approval"))                                     msg = "Approval failed or rejected";
       else if (err?.message)                                                            msg = err.message.slice(0, 80);
       setErrorMsg(msg);
@@ -714,14 +809,22 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
   };
 
   const handleSwapClick = () => {
-    if (Number(ethAmount) > 0.5 || Number(tokenAmount) > 1000 || priceImpact > 3) {
+    // FIX 9: Previously checked `Number(ethAmount) > 0.5` even in reversed mode
+    // (where the user is inputting tokens, not ETH). Check the actual *input* value.
+    const inputAmt = reversed ? Number(tokenAmount) : Number(ethAmount);
+    const inputUsd = reversed
+      ? inputAmt * (tokenPriceUsd ?? 0)
+      : inputAmt * (ethPrice ?? 0);
+    if (inputUsd > 500 || priceImpact > 3) {
       setShowConfirmModal(true);
     } else {
       executeSwap();
     }
   };
 
-  const formatBalance = (bal) => bal.toFixed(6);
+  // Use formatMaxBalance for the balance label too — toFixed(6) would show
+  // "0.000000" for tiny balances like 0.0000001, making the user think they have nothing.
+  const formatBalance = (bal) => formatMaxBalance(bal);
 
   const handleMaxClick = (boxType) => {
     suppressNextQuoteRef.current = false; // user is editing — allow quote
@@ -752,7 +855,7 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
     symbol:   reversed ? tokenSymbol : "ETH",
     logoUrl:  reversed ? tokenLogo : null,
     value:    reversed ? tokenAmount : ethAmount,
-    usd:      reversed ? tokenUsdVal : ethUsdVal,
+    usd:      bothUsd,
     balance:  reversed ? `${formatBalance(userTokenBalance)} ${tokenSymbol}` : `${formatBalance(userEthBalance)} ETH`,
     onChange: (v) => {
       suppressNextQuoteRef.current = false; // user is typing
@@ -768,10 +871,12 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
     symbol:   reversed ? "ETH" : tokenSymbol,
     logoUrl:  reversed ? null : tokenLogo,
     value:    reversed ? ethAmount : tokenAmount,
-    usd:      reversed ? ethUsdVal : tokenUsdVal,
+    usd:      bothUsd,
     balance:  reversed ? `${formatBalance(userEthBalance)} ETH` : `${formatBalance(userTokenBalance)} ${tokenSymbol}`,
-    onMaxClick: () => handleMaxClick('bottom'),
-    showMax: true,
+    // FIX 10: showMax must be false on the output (read-only) box. The bot box is
+    // read-only — showing a MAX button that does nothing confuses users.
+    onMaxClick: undefined,
+    showMax: false,
   };
 
   // ── Button state ─────────────────────────────────────────────────────────────
@@ -1009,8 +1114,11 @@ export default function Swap({ tokenAddress, tokenData, ethPrice: appEthPrice })
         swapDetails={{
           fromAmount:  reversed ? tokenAmount : ethAmount,
           fromSymbol:  reversed ? tokenSymbol : 'ETH',
-          toAmount:    reversed ? ethAmount   : tokenAmount,
-          toSymbol:    reversed ? 'ETH'       : tokenSymbol,
+          // FIX 11: toAmount must be the *output* from the quote, not the raw
+          // counterpart field. In reversed mode, ethAmount IS the quoted output.
+          // In normal mode, tokenAmount IS the quoted output. outputAmount captures this.
+          toAmount:    outputAmount,
+          toSymbol:    outputSymbol,
           priceImpact,
           gasEstimate: estimatedGas,
         }}

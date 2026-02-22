@@ -54,24 +54,46 @@ export default function App() {
   const isBase       = chain?.id === base.id;  // FIX: use base.id not magic number 8453
 
   // ── ETH price polling ────────────────────────────────────────────────────────
+  // Switched from CoinGecko to Coinbase spot price API because:
+  //   1. CoinGecko blocks direct browser requests (CORS)
+  //   2. CoinGecko rate-limits aggressively → 429 errors
+  //   3. Coinbase endpoint is CORS-open, no API key needed, reliable
+  // Polling every 60s — ETH price doesn't need sub-minute freshness,
+  // and 20s polling was flooding the API causing the 429s.
   useEffect(() => {
     let mounted = true;
 
     const fetchEthPrice = async () => {
+      // Network check — skip the fetch entirely if the browser is offline.
+      // Without this, every poll attempt while offline fires a failed request,
+      // which can trigger rate-limit counters on the API side once reconnected
+      // (burst of retried requests all landing at once).
+      if (!navigator.onLine) return;
+
       try {
-        const res = await axios.get(
-          "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd"
-        );
-        if (mounted) setEthPrice(res.data?.ethereum?.usd ?? null);
+        const res = await fetch("https://api.coinbase.com/v2/prices/ETH-USD/spot");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        const price = parseFloat(json?.data?.amount);
+        if (mounted && !isNaN(price)) setEthPrice(price);
       } catch {
         // Non-critical — app still works without ETH price
-        if (mounted) setEthPrice(null);
       }
     };
 
     fetchEthPrice();
-    const t = setInterval(fetchEthPrice, 20_000);
-    return () => { mounted = false; clearInterval(t); };
+    const t = setInterval(fetchEthPrice, 60_000); // 60s is plenty
+
+    // Also fetch immediately when the user comes back online — so they don't
+    // have to wait up to 60s for a fresh price after reconnecting.
+    const handleOnline = () => { if (mounted) fetchEthPrice(); };
+    window.addEventListener("online", handleOnline);
+
+    return () => {
+      mounted = false;
+      clearInterval(t);
+      window.removeEventListener("online", handleOnline);
+    };
   }, []);
 
   // ── Cache helpers ────────────────────────────────────────────────────────────
