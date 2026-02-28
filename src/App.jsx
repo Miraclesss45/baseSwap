@@ -43,21 +43,12 @@ export default function App() {
   const isBase       = chain?.id === base.id;
 
   // ── ETH price polling ─────────────────────────────────────────────────────
-  //
-  // WHY CoinGecko instead of Coinbase:
-  //   • Coinbase /v2/prices times out or is actively blocked from many regions
-  //     (Nigeria, etc.), causing ERR_TIMED_OUT floods in the console.
-  //   • CoinGecko's public /api/v3/simple/price endpoint returns proper
-  //     Access-Control-Allow-Origin: * headers, so browsers anywhere can call
-  //     it directly with no proxy. No API key required at this polling rate.
-  //
   useEffect(() => {
     let mounted = true;
 
     const fetchEthPrice = async () => {
       if (!navigator.onLine) return;
       try {
-        // ✅ CoinGecko public API — CORS-open, globally accessible, no key needed
         const res = await fetch(
           "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd"
         );
@@ -141,7 +132,6 @@ export default function App() {
       if (cached) {
         setTokenData(cached);
         setFetchedTokenAddress(checksummedAddr);
-        setMessage("✅ Data loaded from cache (30s TTL)");
         return;
       }
 
@@ -222,7 +212,6 @@ export default function App() {
       setCachedToken(checksummedAddr, tokenObj);
       setTokenData(tokenObj);
       setFetchedTokenAddress(checksummedAddr);
-      setMessage("✅ Token data fetched successfully");
     } catch (err) {
       console.error("[fetchToken]", err);
       let errorMsg = "❌ Failed to fetch token data. ";
@@ -340,13 +329,12 @@ export default function App() {
       {/* ── Main ── */}
       <main className="relative z-10 max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-10 py-6 sm:py-8 lg:py-14">
 
-        {message && (
-          <div className={`mb-6 flex items-start gap-3 px-4 py-3 rounded-xl border font-mono text-sm backdrop-blur-sm ${
-            isError ? "bg-red-950/30 border-red-500/20 text-red-300" : "bg-cyan-950/30 border-cyan-500/20 text-cyan-300"
-          }`}>
-            <svg className={`w-4 h-4 shrink-0 mt-0.5 ${isError ? "text-red-400" : "text-cyan-400"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {/* Only show banner for errors, not success messages */}
+        {message && isError && (
+          <div className="mb-6 flex items-start gap-3 px-4 py-3 rounded-xl border font-mono text-sm backdrop-blur-sm bg-red-950/30 border-red-500/20 text-red-300">
+            <svg className="w-4 h-4 shrink-0 mt-0.5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                d={isError ? "M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" : "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"} />
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <p className="flex-1 leading-relaxed break-words">{message}</p>
             <button onClick={() => setMessage("")} className="text-slate-500 hover:text-white transition-colors shrink-0">
