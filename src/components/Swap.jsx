@@ -58,7 +58,9 @@ const ERC20ABI = [
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const ONEINCH_ROUTER        = getAddress("0x111111125421cA6dc452d289314280a0f8842A65");
-const ONEINCH_API           = "https://api.1inch.dev/swap/v6.0/8453";
+const ONEINCH_API = import.meta.env.DEV
+  ? "/api/1inch/swap/v6.0/8453"
+  : "https://api.1inch.dev/swap/v6.0/8453";
 const ONEINCH_API_KEY       = import.meta.env.VITE_ONEINCH_API_KEY;
 const NATIVE_ETH            = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 const DEFAULT_GAS_EST       = "0.00005";
