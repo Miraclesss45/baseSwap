@@ -295,13 +295,13 @@ export default function App() {
         <div className="relative max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-10">
           <div className="flex items-center justify-between h-16 sm:h-14 lg:h-[68px]">
             <div className="flex items-center gap-6 sm:gap-8 lg:gap-10">
-              <div className="flex items-center gap-3 cursor-pointer select-none shrink-0">
+              <div className="flex items-center gap-2 sm:gap-3 cursor-pointer select-none shrink-0">
                 <img
                   src={Logo}
                   alt="Chainiva Logo"
-                  className="h-8 sm:h-9 lg:h-10 w-auto object-contain"
+                  className="h-7 sm:h-8 lg:h-10 w-auto object-contain"
                 />
-                <span className="font-display text-lg md:text-xl font-bold tracking-tight bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
+                <span className="hidden sm:inline text-base md:text-lg lg:text-xl font-display font-bold tracking-tight bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
                   Chainiva Swap
                 </span>
               </div>
