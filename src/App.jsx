@@ -761,23 +761,13 @@ export default function App() {
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-10 py-6 sm:py-7">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-6">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br from-cyan-500 to-blue-600">
-                <svg
-                  className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2.5"
-                    d="M13 10V3L4 14h7v7l9-11h-7z"
-                  />
-                </svg>
-              </div>
+               <img
+                  src={Logo}
+                  alt="Chainiva Logo"
+                  className="h-7 sm:h-8 lg:h-10 w-auto object-contain"
+                />
               <span className="font-mono text-xs sm:text-[11px] text-slate-600 tracking-wider">
-                baseSwap © 2025
+                Chainiva Swap © 2025
               </span>
             </div>
             <div className="flex flex-wrap justify-center items-center gap-4 sm:gap-5 md:gap-6">
